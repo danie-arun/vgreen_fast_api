@@ -11,6 +11,7 @@ from api.collection_routes import router as collection_router
 from api.billing_routes import router as billing_router
 from api.staff_routes import router as staff_router
 from api.reports_routes import router as reports_router
+import os
 
 Base.metadata.create_all(bind=engine)
 
