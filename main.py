@@ -13,7 +13,7 @@ from api.staff_routes import router as staff_router
 from api.reports_routes import router as reports_router
 import os
 
-Base.metadata.create_all(bind=engine)
+#Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="VGreen Backend API",
