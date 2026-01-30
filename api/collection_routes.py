@@ -11,6 +11,8 @@ class PaymentRequest(BaseModel):
     emi_id: int
     amount: float
     paid_by: str = "System"
+    loan_advance: float = 0
+    credit_officer: str = ""
 
 
 @router.get("/list")
@@ -58,7 +60,14 @@ def process_emi_payment(
 ):
     """Process EMI payment and update status"""
     try:
-        result = CollectionService.process_emi_payment(db, payment.emi_id, payment.amount, payment.paid_by)
+        result = CollectionService.process_emi_payment(
+            db,
+            payment.emi_id,
+            payment.amount,
+            payment.paid_by,
+            loan_advance=payment.loan_advance,
+            credit_officer=payment.credit_officer,
+        )
         if result:
             return {
                 "success": True,

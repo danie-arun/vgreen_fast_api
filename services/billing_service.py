@@ -19,7 +19,8 @@ class BillingService:
         type: str,
         description: str = None,
         member_group_id: int = None,
-        created_by: str = "System"
+        created_by: str = "System",
+        staff_id: str = None,
     ) -> dict:
         """Create a billing entry"""
         logger.info(f"Creating billing entry for loan_id: {loan_id}, member_id: {member_id}, billing_code: {billing_code}")
@@ -28,6 +29,7 @@ class BillingService:
                 loan_id=loan_id,
                 member_id=member_id,
                 member_group_id=member_group_id,
+                staff_id=staff_id,
                 amount=float(amount),
                 billing_code=billing_code,
                 type=type,
@@ -44,6 +46,7 @@ class BillingService:
                 'loan_id': billing.loan_id,
                 'member_id': billing.member_id,
                 'member_group_id': billing.member_group_id,
+                'staff_id': getattr(billing, 'staff_id', None),
                 'amount': float(billing.amount),
                 'billing_code': billing.billing_code,
                 'type': billing.type,
@@ -84,6 +87,7 @@ class BillingService:
                     loan_id=loan_id,
                     member_id=loan_member.member_id,
                     member_group_id=loan_member.member_group_id,
+                    staff_id=loan.field_officer_id,
                     amount=float(loan_member.amount),
                     billing_code="LOAN_AMOUNT",
                     type="DEBIT",
@@ -101,6 +105,7 @@ class BillingService:
                         loan_id=loan_id,
                         member_id=loan_member.member_id,
                         member_group_id=loan_member.member_group_id,
+                        staff_id=loan.field_officer_id,
                         amount=processing_fee,
                         billing_code="PROCESSING_FEE",
                         type="CREDIT",
@@ -118,6 +123,7 @@ class BillingService:
                         loan_id=loan_id,
                         member_id=loan_member.member_id,
                         member_group_id=loan_member.member_group_id,
+                        staff_id=loan.field_officer_id,
                         amount=insurance_fee,
                         billing_code="INSURANCE_FEE",
                         type="DEBIT",
@@ -135,6 +141,7 @@ class BillingService:
                         loan_id=loan_id,
                         member_id=loan_member.member_id,
                         member_group_id=loan_member.member_group_id,
+                        staff_id=loan.field_officer_id,
                         amount=other_fee,
                         billing_code="OTHER_FEE",
                         type="CREDIT",
@@ -151,6 +158,7 @@ class BillingService:
                         loan_id=loan_id,
                         member_id=loan_member.member_id,
                         member_group_id=loan_member.member_group_id,
+                        staff_id=loan.field_officer_id,
                         amount=interest_fee,
                         billing_code="INTEREST",
                         type="CREDIT",
@@ -174,7 +182,8 @@ class BillingService:
         member_id: int,
         member_group_id: int,
         amount: float,
-        created_by: str = "System"
+        created_by: str = "System",
+        staff_id: str = None,
     ) -> dict:
         """Create billing entry when payment is made"""
         logger.info(f"Creating payment billing entry for loan_id: {loan_id}, member_id: {member_id}, amount: {amount}")
@@ -185,11 +194,12 @@ class BillingService:
                 loan_id=loan_id,
                 member_id=member_id,
                 member_group_id=member_group_id,
+                staff_id=staff_id,
                 amount=amount,
                 billing_code="PAYMENT",
                 type="CREDIT",
                 description=f"Payment received",
-                created_by=created_by
+                created_by=created_by,
             )
             logger.info(f"Successfully created payment billing entry")
             return payment_entry
@@ -210,6 +220,7 @@ class BillingService:
                     'loan_id': b.loan_id,
                     'member_id': b.member_id,
                     'member_group_id': b.member_group_id,
+                    'staff_id': getattr(b, 'staff_id', None),
                     'amount': float(b.amount),
                     'billing_code': b.billing_code,
                     'type': b.type,
@@ -238,6 +249,7 @@ class BillingService:
                     'loan_id': b.loan_id,
                     'member_id': b.member_id,
                     'member_group_id': b.member_group_id,
+                    'staff_id': getattr(b, 'staff_id', None),
                     'amount': float(b.amount),
                     'billing_code': b.billing_code,
                     'type': b.type,

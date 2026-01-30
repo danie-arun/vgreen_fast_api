@@ -77,6 +77,7 @@ class CollectionService:
                         'phone': loan_member.phone,
                         'collectedAmount': member_collected,
                         'pendingAmount': member_pending,
+                        'advanceAmount': float(getattr(loan_member, 'advance', 0) or 0),
                         'totalAmount': member_total,
                         'emiSchedule': [
                             {
@@ -158,7 +159,7 @@ class CollectionService:
 
             members = []
             for loan_member in loan_members:
-                member_emis = [emi for emi in emi_schedule if emi.member_id == loan_member.id]
+                member_emis = [emi for emi in emi_schedule if emi.member_id == loan_member.member_id]
                 
                 # Get member totals from loan_members table
                 member_collected = float(loan_member.collected or 0)
@@ -166,12 +167,13 @@ class CollectionService:
                 member_total = member_collected + member_pending
 
                 members.append({
-                    'id': loan_member.id,
+                    'id': loan_member.member_id,
                     'name': loan_member.name,
                     'place': loan_member.place,
                     'phone': loan_member.phone,
                     'collectedAmount': member_collected,
                     'pendingAmount': member_pending,
+                    'advanceAmount': float(getattr(loan_member, 'advance', 0) or 0),
                     'totalAmount': member_total,
                     'emiSchedule': [
                         {
@@ -220,10 +222,20 @@ class CollectionService:
             return {}
 
     @staticmethod
-    def process_emi_payment(db: Session, emi_id: int, amount: float, paid_by: str = "System") -> dict:
+    def process_emi_payment(
+        db: Session,
+        emi_id: int,
+        amount: float,
+        paid_by: str = "System",
+        loan_advance: float = 0,
+        credit_officer: str = "",
+    ) -> dict:
         """Process EMI payment and update status"""
         logger.info(f"Processing payment for EMI ID: {emi_id}, Amount: {amount}")
         try:
+            if not (credit_officer or "").strip():
+                raise ValueError("Credit Officer is required")
+
             # Get the EMI record
             emi = db.query(LoanMemberEmi).filter(LoanMemberEmi.id == emi_id).first()
             if not emi:
@@ -238,6 +250,9 @@ class CollectionService:
             # Get the loan member to update collected and pending amounts
             loan_member = db.query(LoanMember).filter(LoanMember.loan_id == emi.loan_id , LoanMember.member_id == emi.member_id).first()
             if loan_member:
+                billing_created_by = credit_officer or paid_by
+                billing_staff_id = credit_officer or None
+
                 # Update collected and pending amounts
                 loan_member.collected = float(loan_member.collected or 0) + float(amount)
                 loan_member.pending = float(loan_member.pending or 0) - float(amount)
@@ -252,8 +267,26 @@ class CollectionService:
                     member_id=emi.member_id,
                     member_group_id=loan_member.member_group_id,
                     amount=amount,
-                    created_by=paid_by
+                    created_by=billing_created_by,
+                    staff_id=billing_staff_id,
                 )
+
+                # If loan advance provided, update advance and create billing entry
+                if float(loan_advance or 0) > 0:
+                    loan_member.advance = float(getattr(loan_member, 'advance', 0) or 0) + float(loan_advance)
+
+                    BillingService.create_billing_entry(
+                        db=db,
+                        loan_id=emi.loan_id,
+                        member_id=emi.member_id,
+                        member_group_id=loan_member.member_group_id,
+                        amount=float(loan_advance),
+                        billing_code="LOAN_ADVANCE",
+                        type="CREDIT",
+                        description="Loan advance received",
+                        created_by=billing_created_by,
+                        staff_id=billing_staff_id,
+                    )
 
             db.commit()
             db.refresh(emi)
@@ -265,6 +298,7 @@ class CollectionService:
                 'label': emi.label,
                 'member_collected': float(loan_member.collected or 0) if loan_member else 0,
                 'member_pending': float(loan_member.pending or 0) if loan_member else 0,
+                'member_advance': float(getattr(loan_member, 'advance', 0) or 0) if loan_member else 0,
             }
 
         except Exception as e:

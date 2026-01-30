@@ -19,14 +19,18 @@ class ReportsService:
             # Get unique EMI days (only active loans)
             emi_days = db.query(Loan.emi_day).distinct().filter(
                 Loan.emi_day.isnot(None),
-                Loan.del_mark == 'N'
+                Loan.del_mark == 'N',
+                Loan.loan_status == 'Approved',
             ).all()
             emi_days = sorted(list(set([day[0] for day in emi_days if day[0]])))
 
             # Get unique members (only from active loans)
             members = db.query(LoanMember.id, LoanMember.name).distinct().filter(
                 LoanMember.id.in_(
-                    db.query(LoanMember.id).join(Loan).filter(Loan.del_mark == 'N')
+                    db.query(LoanMember.id).join(Loan).filter(
+                        Loan.del_mark == 'N',
+                        Loan.loan_status == 'Approved',
+                    )
                 )
             ).all()
             members_dict = {m[0]: {"id": m[0], "name": m[1]} for m in members}
@@ -35,7 +39,10 @@ class ReportsService:
             # Get unique member groups (only active groups)
             groups = db.query(MemberGroup.id, MemberGroup.name).distinct().filter(
                 MemberGroup.id.in_(
-                    db.query(Loan.member_group_id).filter(Loan.del_mark == 'N').distinct()
+                    db.query(Loan.member_group_id).filter(
+                        Loan.del_mark == 'N',
+                        Loan.loan_status == 'Approved',
+                    ).distinct()
                 )
             ).all()
             groups_dict = {g[0]: {"id": g[0], "name": g[1]} for g in groups}
@@ -46,6 +53,7 @@ class ReportsService:
                 Staff.staff_id.in_(
                     db.query(Loan.assign_to).filter(
                         Loan.del_mark == 'N',
+                        Loan.loan_status == 'Approved',
                         Loan.assign_to.isnot(None)
                     ).distinct()
                 )
@@ -55,7 +63,8 @@ class ReportsService:
 
             # Get unique loan numbers (only active loans)
             loans = db.query(Loan.id, Loan.loan_id).distinct().filter(
-                Loan.del_mark == 'N'
+                Loan.del_mark == 'N',
+                Loan.loan_status == 'Approved',
             ).all()
             loans_dict = {l[0]: {"id": l[0], "loan_id": l[1]} for l in loans}
             loans_list = sorted(list(loans_dict.values()), key=lambda x: x['loan_id'])
@@ -91,7 +100,10 @@ class ReportsService:
         """Get reports data with filters applied"""
         try:
             # Build base query
-            query = db.query(Loan).filter(Loan.del_mark == "N")
+            query = db.query(Loan).filter(
+                Loan.del_mark == "N",
+                Loan.loan_status == "Approved",
+            )
 
             # Apply date range filter
             if start_date:
@@ -330,13 +342,14 @@ class ReportsService:
                 for member in loan_members:
                     # Get EMI records for this member
                     emi_records = db.query(LoanMemberEmi).filter(
-                        LoanMemberEmi.loan_id == loan.id
+                        LoanMemberEmi.loan_id == loan.id,
+                        LoanMemberEmi.member_id == member.member_id,
                     ).all()
                     
                     total_emi = sum(float(emi.emi_amount or 0) for emi in emi_records)
                     paid_emi = sum(
                         float(emi.emi_amount or 0) for emi in emi_records 
-                        if emi.emi_status == "PAID"
+                        if (emi.emi_status or "").upper() == "PAID"
                     )
                     pending_emi = total_emi - paid_emi
                     
@@ -371,11 +384,12 @@ class ReportsService:
                 for member in loan_members:
                     # Get EMI records for this loan
                     emi_records = db.query(LoanMemberEmi).filter(
-                        LoanMemberEmi.loan_id == loan.id
+                        LoanMemberEmi.loan_id == loan.id,
+                        LoanMemberEmi.member_id == member.member_id,
                     ).all()
                     
                     total_emis = len(emi_records)
-                    paid_emis = len([e for e in emi_records if e.emi_status == "PAID"])
+                    paid_emis = len([e for e in emi_records if (e.emi_status or "").upper() == "PAID"])
                     pending_emis = total_emis - paid_emis
                     
                     # Build EMI details for expansion
@@ -451,11 +465,23 @@ class ReportsService:
                 # Build user details for expansion
                 user_details = []
                 for member in loan_members:
+                    member_emi_records = [
+                        emi for emi in emi_records
+                        if emi.member_id == member.member_id
+                    ]
+
+                    member_total_emi = sum(float(emi.emi_amount or 0) for emi in member_emi_records)
+                    member_paid_emi = sum(
+                        float(emi.emi_amount or 0) for emi in member_emi_records
+                        if (emi.emi_status or "").upper() == "PAID"
+                    )
+                    member_pending_emi = member_total_emi - member_paid_emi
+
                     user_details.append({
                         "userName": member.name,
-                        "totalEmi": round(total_loan_amount / len(loan_members), 2) if loan_members else 0,
-                        "paidEmi": round(total_collected / len(loan_members), 2) if loan_members else 0,
-                        "pendingEmi": round(total_pending / len(loan_members), 2) if loan_members else 0,
+                        "totalEmi": round(member_total_emi, 2),
+                        "paidEmi": round(member_paid_emi, 2),
+                        "pendingEmi": round(member_pending_emi, 2),
                     })
                 
                 collections_summary.append({

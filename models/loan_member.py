@@ -16,5 +16,6 @@ class LoanMember(Base):
     amount = Column(Numeric(10, 2), nullable=False)
     collected = Column(Numeric(10, 2), nullable=False)
     pending = Column(Numeric(10, 2), nullable=False)
+    advance = Column(Numeric(10, 2), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     created_by = Column(String(255), nullable=False)

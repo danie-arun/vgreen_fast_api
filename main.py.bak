@@ -39,7 +39,7 @@ app.include_router(loan_member_emi_router)
 app.include_router(collection_router)
 app.include_router(billing_router)
 app.include_router(staff_router)
-app.include_router(reports_router)
+app.include_router(reports_router)a
 
 @app.get("/")
 async def root():
