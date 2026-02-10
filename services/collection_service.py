@@ -56,6 +56,9 @@ class CollectionService:
                 # Calculate totals from loan_members table
                 total_collected = sum(float(member.collected or 0) for member in loan_members)
                 total_pending = sum(float(member.pending or 0) for member in loan_members)
+                total_principal = sum(float(member.amount or 0) for member in loan_members)
+                per_member_interest = float(getattr(loan, 'interest_amount', 0) or 0)
+                total_interest = per_member_interest * len(loan_members)
                 
                 logger.debug(f"Loan {loan.loan_id}: Total Collected: {total_collected}, Total Pending: {total_pending}")
 
@@ -68,7 +71,8 @@ class CollectionService:
                     # Calculate member totals from loan_members table
                     member_collected = float(loan_member.collected or 0)
                     member_pending = float(loan_member.pending or 0)
-                    member_total = member_collected + member_pending
+                    member_pending_with_interest = member_pending + per_member_interest
+                    member_total = member_collected + member_pending_with_interest
 
                     members.append({
                         'id': loan_member.member_id,
@@ -76,7 +80,7 @@ class CollectionService:
                         'place': loan_member.place,
                         'phone': loan_member.phone,
                         'collectedAmount': member_collected,
-                        'pendingAmount': member_pending,
+                        'pendingAmount': member_pending_with_interest,
                         'advanceAmount': float(getattr(loan_member, 'advance', 0) or 0),
                         'totalAmount': member_total,
                         'emiSchedule': [
@@ -105,9 +109,9 @@ class CollectionService:
                     'groupName': group_name,
                     'memberGroupId': loan.member_group_id,
                     'members': members,
-                    'loanAmount': float(loan.loan_amount* len(loan_members) or 0),
+                    'loanAmount': float(total_principal + total_interest),
                     'collectedAmount': total_collected,
-                    'pendingAmount': total_pending,
+                    'pendingAmount': float(total_pending + total_interest),
                     'frequency': loan.repayment_frequency or 'month',
                     'emiDay': loan.emi_day or 'N/A',
                     'assign_to': loan.assign_to or None,
@@ -156,6 +160,9 @@ class CollectionService:
             # Calculate totals from loan_members table
             total_collected = sum(float(member.collected or 0) for member in loan_members)
             total_pending = sum(float(member.pending or 0) for member in loan_members)
+            total_principal = sum(float(member.amount or 0) for member in loan_members)
+            per_member_interest = float(getattr(loan, 'interest_amount', 0) or 0)
+            total_interest = per_member_interest * len(loan_members)
 
             members = []
             for loan_member in loan_members:
@@ -164,7 +171,8 @@ class CollectionService:
                 # Get member totals from loan_members table
                 member_collected = float(loan_member.collected or 0)
                 member_pending = float(loan_member.pending or 0)
-                member_total = member_collected + member_pending
+                member_pending_with_interest = member_pending + per_member_interest
+                member_total = member_collected + member_pending_with_interest
 
                 members.append({
                     'id': loan_member.member_id,
@@ -172,7 +180,7 @@ class CollectionService:
                     'place': loan_member.place,
                     'phone': loan_member.phone,
                     'collectedAmount': member_collected,
-                    'pendingAmount': member_pending,
+                    'pendingAmount': member_pending_with_interest,
                     'advanceAmount': float(getattr(loan_member, 'advance', 0) or 0),
                     'totalAmount': member_total,
                     'emiSchedule': [
@@ -199,9 +207,9 @@ class CollectionService:
                 'groupName': group_name,
                 'memberGroupId': loan.member_group_id,
                 'members': members,
-                'loanAmount': float(loan.loan_amount or 0),
+                'loanAmount': float(total_principal + total_interest),
                 'collectedAmount': total_collected,
-                'pendingAmount': total_pending,
+                'pendingAmount': float(total_pending + total_interest),
                 'frequency': loan.repayment_frequency or 'month',
                 'emiDay': loan.emi_day or 'N/A',
                 'assign_to': loan.assign_to or None,

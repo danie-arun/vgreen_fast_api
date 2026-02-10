@@ -46,6 +46,30 @@ class LoanMemberEmiService:
 
             logger.info(f"EMI Calculation - Principal: ₹{principal_amount}, Interest Amount: ₹{interest_amount}, Tenure: {num_installments} installments, EMI: ₹{round(emi_amount, 2)}")
 
+            repayment_freq = loan.repayment_frequency or 'month'
+
+            weekly_first_emi_date = None
+            if repayment_freq == 'week':
+                weekday_map = {
+                    'monday': 0,
+                    'tuesday': 1,
+                    'wednesday': 2,
+                    'thursday': 3,
+                    'friday': 4,
+                    'saturday': 5,
+                    'sunday': 6,
+                }
+
+                raw_emi_day = (loan.emi_day or '').strip().lower()
+                target_weekday = weekday_map.get(raw_emi_day)
+                base_date = loan.loan_start_date or datetime.utcnow().date()
+
+                if target_weekday is not None:
+                    days_ahead = (target_weekday - base_date.weekday()) % 7
+                    weekly_first_emi_date = base_date + timedelta(days=days_ahead)
+                else:
+                    weekly_first_emi_date = base_date
+
             # Generate EMI schedule for each loan member
             for member_idx, loan_member in enumerate(loan_members, 1):
                 logger.debug(f"Processing loan member {member_idx}/{len(loan_members)} - Member ID: {loan_member.member_id}")
@@ -53,11 +77,11 @@ class LoanMemberEmiService:
                 
                 for emi_num in range(1, num_installments + 1):
                     # Calculate EMI date based on repayment frequency
-                    repayment_freq = loan.repayment_frequency or 'month'
                     if repayment_freq == 'month':
                         emi_date = start_date + timedelta(days=30 * emi_num)
                     elif repayment_freq == 'week':
-                        emi_date = start_date + timedelta(weeks=emi_num)
+                        first = weekly_first_emi_date or (loan.loan_start_date or datetime.utcnow().date())
+                        emi_date = datetime.combine(first, datetime.min.time()) + timedelta(weeks=emi_num - 1)
                     else:  # quarterly or other
                         emi_date = start_date + timedelta(days=90 * emi_num)
 

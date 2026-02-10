@@ -203,6 +203,7 @@ class ReportsService:
             total_loan_amount = 0
             total_collected = 0
             total_interest_fees = 0
+            total_interest = 0
 
             for billing in billing_records:
                 amount = float(billing.amount or 0)
@@ -211,8 +212,12 @@ class ReportsService:
                     total_loan_amount += amount
                 elif billing.billing_code == "PAYMENT":
                     total_collected += amount
-                elif billing.billing_code in ["PROCESSING_FEE", "INSURANCE_FEE", "OTHER_FEE", "INTEREST"]:
-                    total_interest_fees += amount
+                elif billing.billing_code == "INTEREST":
+                    total_interest += amount
+
+            # UI card label is "Total Interest + Fees", but requirement is:
+            # show only total interest amount (exclude principal and all other fees)
+            total_interest_fees = total_interest
 
             # Calculate pending amount
             total_pending = total_loan_amount - total_collected
@@ -289,7 +294,7 @@ class ReportsService:
                 try:
                     interest_records = db.query(Billing).filter(
                         Billing.loan_id == loan.id,
-                        Billing.billing_code.in_(['INTEREST', 'PROCESSING_FEE', 'INSURANCE_FEE', 'OTHER_FEE'])
+                        Billing.billing_code.in_(['INTEREST'])
                     ).all()
 
                     for record in interest_records:
@@ -428,6 +433,7 @@ class ReportsService:
                 loan_members = db.query(LoanMember).filter(
                     LoanMember.loan_id == loan.id
                 ).all()
+                member_count = len(loan_members)
                 
                 group = db.query(MemberGroup).filter(
                     MemberGroup.id == loan.member_group_id
@@ -438,7 +444,28 @@ class ReportsService:
                     LoanMemberEmi.loan_id == loan.id
                 ).all()
                 
-                total_loan_amount = float(loan.loan_amount or 0)
+                # Total principal across all members
+                base_loan_amount = float(loan.loan_amount or 0)
+                total_loan_amount = base_loan_amount * member_count
+
+                # Total interest from billing table (interest only)
+                total_interest = 0
+                try:
+                    interest_records = db.query(Billing).filter(
+                        Billing.loan_id == loan.id,
+                        Billing.billing_code.in_(['INTEREST'])
+                    ).all()
+                    for record in interest_records:
+                        total_interest += float(record.amount or 0)
+                except Exception as e:
+                    logger.warning(f"Error calculating interest for loan {loan.id}: {str(e)}")
+                    total_interest = 0
+
+                loan_amount_display = (
+                    f"{int(total_loan_amount)} + {int(total_interest)}"
+                    if total_interest > 0
+                    else str(int(total_loan_amount))
+                )
                 
                 # Calculate collected and pending from EMIs
                 total_collected = sum(
@@ -463,6 +490,9 @@ class ReportsService:
                     next_emi_amount = float(next_emi.emi_amount or 0)
                 
                 # Build user details for expansion
+                from datetime import datetime as dt
+                today = dt.now().date()
+                
                 user_details = []
                 for member in loan_members:
                     member_emi_records = [
@@ -477,8 +507,43 @@ class ReportsService:
                     )
                     member_pending_emi = member_total_emi - member_paid_emi
 
+                    # Count EMI statuses
+                    total_emis = len(member_emi_records)
+                    paid_emis = len([e for e in member_emi_records if (e.emi_status or "").upper() == "PAID"])
+                    
+                    # No OD = count of EMIs with date < today
+                    overdue_emis = len([e for e in member_emi_records if e.emi_date and (e.emi_date.date() if hasattr(e.emi_date, 'date') else e.emi_date) < today])
+                    
+                    # OD Amt = sum of EMI amounts with date < today
+                    overdue_amount = sum(
+                        float(e.emi_amount or 0) for e in member_emi_records
+                        if e.emi_date and (e.emi_date.date() if hasattr(e.emi_date, 'date') else e.emi_date) < today
+                    )
+
+                    # Member-level loan amount and collected/pending
+                    member_loan_amount = float(member.amount or 0)
+                    member_collected = float(member.collected or 0)
+                    member_advance = float(getattr(member, 'advance', 0) or 0)
+                    
+                    # LA = member loan amount + member's share of interest
+                    member_interest = total_interest / member_count if member_count > 0 else 0
+                    member_la = member_loan_amount + member_interest
+                    
+                    # Pending = member LA - paid amount
+                    member_pending = member_la - member_collected
+
                     user_details.append({
                         "userName": member.name,
+                        "mobileNumber": member.phone or "N/A",
+                        "loanAmount": round(member_la, 2),
+                        "collectedAmount": round(member_collected, 2),
+                        "pendingAmount": round(member_pending, 2),
+                        "loanAdvance": round(member_advance, 2),
+                        "totalEmis": total_emis,
+                        "paidEmis": paid_emis,
+                        "overdueEmis": overdue_emis,
+                        "totalOverdueAmount": round(overdue_amount, 2),
+                        "emiAmount": round(float(member_emi_records[0].emi_amount or 0), 2) if member_emi_records else 0,
                         "totalEmi": round(member_total_emi, 2),
                         "paidEmi": round(member_paid_emi, 2),
                         "pendingEmi": round(member_pending_emi, 2),
@@ -488,7 +553,11 @@ class ReportsService:
                     "id": collection_id,
                     "loanId": loan.loan_id,
                     "groupName": group.name if group else "N/A",
-                    "loanAmount": round(total_loan_amount, 2),
+                    "emiDay": loan.emi_day or "N/A",
+                    "collectionDate": next_emi_date,
+                    "loanAmount": loan_amount_display,
+                    "loanAmountValue": round(total_loan_amount, 2),
+                    "interestAmount": round(total_interest, 2),
                     "collectedAmount": round(total_collected, 2),
                     "pendingAmount": round(total_pending, 2),
                     "nextEmiDate": next_emi_date,
