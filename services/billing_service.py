@@ -209,6 +209,32 @@ class BillingService:
             return {}
 
     @staticmethod
+    def get_all_billing(db: Session, skip: int = 0, limit: int = 100) -> list:
+        """Get all billing entries"""
+        logger.info(f"Fetching all billing entries skip={skip} limit={limit}")
+        try:
+            billings = db.query(Billing).order_by(Billing.created_at.desc()).offset(skip).limit(limit).all()
+            return [
+                {
+                    'id': b.id,
+                    'loan_id': b.loan_id,
+                    'member_id': b.member_id,
+                    'member_group_id': b.member_group_id,
+                    'staff_id': getattr(b, 'staff_id', None),
+                    'amount': float(b.amount),
+                    'billing_code': b.billing_code,
+                    'type': b.type,
+                    'description': b.description,
+                    'created_at': b.created_at.isoformat() if b.created_at else None,
+                    'created_by': b.created_by,
+                }
+                for b in billings
+            ]
+        except Exception as e:
+            logger.exception(f"Error fetching all billing entries: {str(e)}")
+            return []
+
+    @staticmethod
     def get_billing_by_loan(db: Session, loan_id: int) -> list:
         """Get all billing entries for a loan"""
         logger.info(f"Fetching billing entries for loan_id: {loan_id}")

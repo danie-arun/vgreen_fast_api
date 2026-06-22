@@ -4,9 +4,10 @@ from typing import Optional
 
 
 class BillingCreate(BaseModel):
-    loan_id: int
-    member_id: int
+    loan_id: Optional[int] = None
+    member_id: Optional[int] = None
     member_group_id: Optional[int] = None
+    staff_id: Optional[str] = None
     amount: float
     billing_code: str
     type: str
@@ -21,9 +22,10 @@ class BillingUpdate(BaseModel):
 
 class BillingResponse(BaseModel):
     id: int
-    loan_id: int
-    member_id: int
+    loan_id: Optional[int]
+    member_id: Optional[int]
     member_group_id: Optional[int]
+    staff_id: Optional[str]
     amount: float
     billing_code: str
     type: str

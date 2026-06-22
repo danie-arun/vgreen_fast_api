@@ -7,6 +7,28 @@ from schemas.billing_schema import BillingCreate, BillingResponse
 router = APIRouter(prefix="/api/billing", tags=["billing"])
 
 
+@router.get("/list")
+def get_all_billing(
+    skip: int = 0,
+    limit: int = 100,
+    db: Session = Depends(get_db)
+):
+    """Get all billing entries"""
+    try:
+        billings = BillingService.get_all_billing(db, skip=skip, limit=limit)
+        return {
+            "success": True,
+            "data": billings,
+            "count": len(billings)
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": str(e),
+            "data": []
+        }
+
+
 @router.get("/loan/{loan_id}")
 def get_billing_by_loan(
     loan_id: int,
@@ -61,7 +83,8 @@ def create_billing_entry(
             db=db,
             loan_id=billing.loan_id,
             member_id=billing.member_id,
-            loan_member_id=billing.loan_member_id,
+            member_group_id=billing.member_group_id,
+            staff_id=billing.staff_id,
             amount=billing.amount,
             billing_code=billing.billing_code,
             type=billing.type,
