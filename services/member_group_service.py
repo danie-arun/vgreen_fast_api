@@ -15,6 +15,7 @@ class MemberGroupService:
             member_ids=group.member_ids,
             status='A',
             del_mark='N',
+            org=group.org,
             created_by=group.created_by,
         )
         db.add(db_group)
@@ -31,9 +32,10 @@ class MemberGroupService:
         ).first()
 
     @staticmethod
-    def get_groups(db: Session, skip: int = 0, limit: int = 100) -> list:
-        """Get all active groups"""
+    def get_groups(db: Session, org: str, skip: int = 0, limit: int = 100) -> list:
+        """Get all active groups for org"""
         return db.query(MemberGroup).filter(
+            MemberGroup.org == org,
             MemberGroup.del_mark == 'N'
         ).order_by(MemberGroup.id.desc()).offset(skip).limit(limit).all()
 
@@ -90,9 +92,10 @@ class MemberGroupService:
         return db_group
 
     @staticmethod
-    def search_groups(db: Session, search_query: str, skip: int = 0, limit: int = 100) -> list:
-        """Search groups by name or place"""
+    def search_groups(db: Session, org: str, search_query: str, skip: int = 0, limit: int = 100) -> list:
+        """Search groups by name or place for org"""
         return db.query(MemberGroup).filter(
+            MemberGroup.org == org,
             (MemberGroup.name.ilike(f"%{search_query}%") |
              MemberGroup.place.ilike(f"%{search_query}%")),
             MemberGroup.del_mark == 'N'

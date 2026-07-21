@@ -47,6 +47,7 @@ class MemberService:
             guarantor_kyc_id=member.guarantor_kyc_id,
             status='A',
             del_mark='N',
+            org=member.org,
             created_by=member.created_by,
         )
         db.add(db_member)
@@ -63,9 +64,10 @@ class MemberService:
         ).first()
 
     @staticmethod
-    def get_members(db: Session, skip: int = 0, limit: int = 100) -> list:
-        """Get all active members"""
+    def get_members(db: Session, org: str, skip: int = 0, limit: int = 100) -> list:
+        """Get all active members for org"""
         return db.query(Member).filter(
+            Member.org == org,
             Member.del_mark == 'N'
         ).order_by(Member.id.desc()).offset(skip).limit(limit).all()
 
@@ -130,17 +132,19 @@ class MemberService:
         return db_member
 
     @staticmethod
-    def get_members_by_status(db: Session, status: str, skip: int = 0, limit: int = 100) -> list:
-        """Get members by status"""
+    def get_members_by_status(db: Session, org: str, status: str, skip: int = 0, limit: int = 100) -> list:
+        """Get members by status for org"""
         return db.query(Member).filter(
+            Member.org == org,
             Member.status == status,
             Member.del_mark == 'N'
         ).offset(skip).limit(limit).all()
 
     @staticmethod
-    def search_members(db: Session, search_query: str, skip: int = 0, limit: int = 100) -> list:
-        """Search members by name or mobile number"""
+    def search_members(db: Session, org: str, search_query: str, skip: int = 0, limit: int = 100) -> list:
+        """Search members by name or mobile number for org"""
         return db.query(Member).filter(
+            Member.org == org,
             (Member.full_name.ilike(f"%{search_query}%") |
              Member.primary_mobile_number.ilike(f"%{search_query}%")),
             Member.del_mark == 'N'

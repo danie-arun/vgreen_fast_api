@@ -12,20 +12,25 @@ logger = logging.getLogger(__name__)
 
 class CollectionService:
     @staticmethod
-    def get_collection_list(db: Session, skip: int = 0, limit: int = 100) -> list:
+    def get_collection_list(db: Session, org: str = None, skip: int = 0, limit: int = 100) -> list:
         """
-        Get collection list with approved loans only.
+        Get collection list with approved loans only for authenticated user's org.
         Combines loans, loan_members, and loan_member_emi data.
         """
-        logger.info("Fetching collection list for approved loans")
+        logger.info(f"Fetching collection list for approved loans in org: {org}")
         try:
-            # Fetch only approved loans
-            approved_loans = db.query(Loan).filter(
+            # Fetch only approved loans for the user's org
+            query = db.query(Loan).filter(
                 Loan.loan_status == 'Approved',
                 Loan.del_mark != 'Y'
-            ).order_by(Loan.id.desc()).offset(skip).limit(limit).all()
+            )
+            
+            if org:
+                query = query.filter(Loan.org == org)
+            
+            approved_loans = query.order_by(Loan.id.desc()).offset(skip).limit(limit).all()
 
-            logger.info(f"Found {len(approved_loans)} approved loans")
+            #logger.info(f"Found {len(approved_loans)} approved loans")
 
             collection_list = []
 
@@ -35,7 +40,7 @@ class CollectionService:
                     LoanMember.loan_id == loan.id
                 ).all()
 
-                logger.debug(f"Loan {loan.loan_id}: Found {len(loan_members)} members")
+                #logger.debug(f"Loan {loan.loan_id}: Found {len(loan_members)} members")
 
                 # Get member group name
                 group_name = ''
@@ -51,7 +56,7 @@ class CollectionService:
                     LoanMemberEmi.loan_id == loan.id
                 ).order_by(LoanMemberEmi.emi_date).all()
 
-                logger.debug(f"Loan {loan.loan_id}: Found {len(emi_schedule)} EMI records")
+                #logger.debug(f"Loan {loan.loan_id}: Found {len(emi_schedule)} EMI records")
 
                 # Calculate totals from loan_members table
                 total_collected = sum(float(member.collected or 0) for member in loan_members)
@@ -126,7 +131,7 @@ class CollectionService:
 
                 collection_list.append(collection)
 
-            logger.info(f"Successfully built collection list with {len(collection_list)} items")
+            #logger.info(f"Successfully built collection list with {len(collection_list)} items")
             return collection_list
 
         except Exception as e:
@@ -134,11 +139,15 @@ class CollectionService:
             return []
 
     @staticmethod
-    def get_collection_by_loan_id(db: Session, loan_id: int) -> dict:
-        """Get collection details for a specific loan"""
-        logger.info(f"Fetching collection details for loan_id: {loan_id}")
+    def get_collection_by_loan_id(db: Session, loan_id: int, org: str = None) -> dict:
+        """Get collection details for a specific loan for authenticated user's org"""
+        logger.info(f"Fetching collection details for loan_id: {loan_id} in org: {org}")
         try:
-            loan = db.query(Loan).filter(Loan.id == loan_id).first()
+            query = db.query(Loan).filter(Loan.id == loan_id)
+            if org:
+                query = query.filter(Loan.org == org)
+            
+            loan = query.first()
             if not loan:
                 logger.error(f"Loan not found: {loan_id}")
                 return {}
@@ -235,19 +244,27 @@ class CollectionService:
         emi_id: int,
         amount: float,
         paid_by: str = "System",
+        org: str = None,
         loan_advance: float = 0,
         credit_officer: str = "",
     ) -> dict:
-        """Process EMI payment and update status"""
-        logger.info(f"Processing payment for EMI ID: {emi_id}, Amount: {amount}")
+        """Process EMI payment and update status for authenticated user's org"""
+        print(f"Processing payment for EMI ID: {emi_id}, Amount: {amount}, Org: {org}")
         try:
             if not (credit_officer or "").strip():
                 raise ValueError("Credit Officer is required")
 
-            # Get the EMI record
+            # Get the EMI record with org filtering
             emi = db.query(LoanMemberEmi).filter(LoanMemberEmi.id == emi_id).first()
             if not emi:
                 logger.error(f"EMI not found: {emi_id}")
+                print(f"EMI not found: {emi_id}")
+                return {}
+            
+            # Verify the EMI belongs to the user's org
+            loan = db.query(Loan).filter(Loan.id == emi.loan_id).first()
+            if not loan or (org and loan.org != org):
+                logger.error(f"EMI {emi_id} does not belong to org {org}")
                 return {}
 
             # Update EMI status and label
@@ -266,7 +283,7 @@ class CollectionService:
                 loan_member.pending = float(loan_member.pending or 0) - float(amount)
                 if loan_member.pending < 0:
                     loan_member.pending = 0
-                logger.debug(f"Updated loan member {loan_member.id}: collected={loan_member.collected}, pending={loan_member.pending}")
+                print(f"Updated loan member {loan_member.id}: collected={loan_member.collected}, pending={loan_member.pending}")
 
                 # Create billing entry for payment (CREDIT)
                 BillingService.create_payment_billing(
@@ -275,6 +292,7 @@ class CollectionService:
                     member_id=emi.member_id,
                     member_group_id=loan_member.member_group_id,
                     amount=amount,
+                    org=org,
                     created_by=billing_created_by,
                     staff_id=billing_staff_id,
                 )
@@ -292,6 +310,7 @@ class CollectionService:
                         billing_code="LOAN_ADVANCE",
                         type="CREDIT",
                         description="Loan advance received",
+                        org=org,
                         created_by=billing_created_by,
                         staff_id=billing_staff_id,
                     )
@@ -299,7 +318,7 @@ class CollectionService:
             db.commit()
             db.refresh(emi)
 
-            logger.info(f"Successfully processed payment for EMI ID: {emi_id}")
+            print(f"Successfully processed payment for EMI ID: {emi_id}")
             return {
                 'id': emi.id,
                 'emi_status': emi.emi_status,

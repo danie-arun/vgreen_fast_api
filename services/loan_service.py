@@ -37,6 +37,7 @@ class LoanService:
             loan_status=loan.loan_status or 'Draft',
             status='A',
             del_mark='N',
+            org=loan.org,
             created_by=loan.created_by,
         )
         db.add(db_loan)
@@ -49,7 +50,8 @@ class LoanService:
                 db_loan.id,
                 loan.member_group_id,
                 loan.loan_amount,
-                loan.created_by
+                loan.created_by,
+                loan.org
             )
         
         return db_loan
@@ -60,23 +62,26 @@ class LoanService:
         return db.query(Loan).filter(Loan.id == loan_id, Loan.del_mark == 'N').first()
 
     @staticmethod
-    def get_loans(db: Session, skip: int = 0, limit: int = 100) -> list:
-        """Get all active loans"""
+    def get_loans(db: Session, org: str, skip: int = 0, limit: int = 100) -> list:
+        """Get all active loans for org"""
         return db.query(Loan).filter(
+            Loan.org == org,
             Loan.del_mark == 'N'
         ).order_by(Loan.id.desc()).offset(skip).limit(limit).all()
 
     @staticmethod
-    def get_loans_by_member(db: Session, member_id: int, skip: int = 0, limit: int = 100) -> list:
-        """Get all loans for a specific member (via member group)"""
+    def get_loans_by_member(db: Session, org: str, member_id: int, skip: int = 0, limit: int = 100) -> list:
+        """Get all loans for a specific member (via member group) for org"""
         return db.query(Loan).filter(
+            Loan.org == org,
             Loan.del_mark == 'N'
         ).offset(skip).limit(limit).all()
 
     @staticmethod
-    def get_loans_by_group(db: Session, group_id: int, skip: int = 0, limit: int = 100) -> list:
-        """Get all loans for a specific member group"""
+    def get_loans_by_group(db: Session, org: str, group_id: int, skip: int = 0, limit: int = 100) -> list:
+        """Get all loans for a specific member group for org"""
         return db.query(Loan).filter(
+            Loan.org == org,
             Loan.member_group_id == group_id,
             Loan.del_mark == 'N'
         ).offset(skip).limit(limit).all()
@@ -192,9 +197,10 @@ class LoanService:
         return db_loan
 
     @staticmethod
-    def search_loans(db: Session, query: str, skip: int = 0, limit: int = 100) -> list:
-        """Search loans by loan_id or member details"""
+    def search_loans(db: Session, org: str, query: str, skip: int = 0, limit: int = 100) -> list:
+        """Search loans by loan_id or member details for org"""
         return db.query(Loan).filter(
+            Loan.org == org,
             Loan.del_mark == 'N',
             (Loan.loan_id.ilike(f'%{query}%'))
         ).offset(skip).limit(limit).all()

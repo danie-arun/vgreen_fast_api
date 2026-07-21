@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from database import get_db
+from dependencies import get_current_user, get_org_id
 from schemas.member_group import MemberGroupCreate, MemberGroupUpdate, MemberGroupResponse
 from services.member_group_service import MemberGroupService
 
@@ -8,9 +9,15 @@ router = APIRouter(prefix="/api/member-groups", tags=["member-groups"])
 
 
 @router.post("/", response_model=MemberGroupResponse)
-def create_group(group: MemberGroupCreate, db: Session = Depends(get_db)):
+def create_group(
+    group: MemberGroupCreate,
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """Create a new member group"""
     try:
+        # Override org with authenticated user's org
+        group.org = current_user['org']
         db_group = MemberGroupService.create_group(db, group)
         return db_group
     except Exception as e:
@@ -18,10 +25,15 @@ def create_group(group: MemberGroupCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/", response_model=list[MemberGroupResponse])
-def get_groups(skip: int = Query(0), limit: int = Query(100), db: Session = Depends(get_db)):
-    """Get all active member groups"""
+def get_groups(
+    skip: int = Query(0),
+    limit: int = Query(100),
+    db: Session = Depends(get_db),
+    org: str = Depends(get_org_id)
+):
+    """Get all active member groups for authenticated user's org"""
     try:
-        groups = MemberGroupService.get_groups(db, skip, limit)
+        groups = MemberGroupService.get_groups(db, org=org, skip=skip, limit=limit)
         return groups
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -80,11 +92,12 @@ def search_groups(
     q: str = Query(...),
     skip: int = Query(0),
     limit: int = Query(100),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    org: str = Depends(get_org_id)
 ):
-    """Search member groups by name or place"""
+    """Search member groups by name or place for authenticated user's org"""
     try:
-        groups = MemberGroupService.search_groups(db, q, skip, limit)
+        groups = MemberGroupService.search_groups(db, org=org, search_query=q, skip=skip, limit=limit)
         return groups
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

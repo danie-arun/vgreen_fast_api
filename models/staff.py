@@ -34,6 +34,7 @@ class Staff(Base):
     onboarding_target = Column(String(45), nullable=True)
     status = Column(String(2), nullable=True)
     del_mark = Column(String(2), nullable=True)
+    org = Column(String(255), nullable=False, index=True)
     created_at = Column(DateTime, nullable=True)
     updated_at = Column(DateTime, nullable=True)
     created_by = Column(String(255), nullable=True)

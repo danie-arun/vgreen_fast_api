@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from database import get_db
+from dependencies import get_current_user, get_org_id
 from services.billing_service import BillingService
 from schemas.billing_schema import BillingCreate, BillingResponse
 
@@ -11,11 +12,12 @@ router = APIRouter(prefix="/api/billing", tags=["billing"])
 def get_all_billing(
     skip: int = 0,
     limit: int = 100,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    org: str = Depends(get_org_id)
 ):
-    """Get all billing entries"""
+    """Get all billing entries for authenticated user's org"""
     try:
-        billings = BillingService.get_all_billing(db, skip=skip, limit=limit)
+        billings = BillingService.get_all_billing(db, org=org, skip=skip, limit=limit)
         return {
             "success": True,
             "data": billings,
@@ -75,10 +77,13 @@ def get_billing_by_member(
 @router.post("/create")
 def create_billing_entry(
     billing: BillingCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
 ):
     """Create a new billing entry"""
     try:
+        # Override org with authenticated user's org
+        billing.org = current_user['org']
         result = BillingService.create_billing_entry(
             db=db,
             loan_id=billing.loan_id,
@@ -89,6 +94,7 @@ def create_billing_entry(
             billing_code=billing.billing_code,
             type=billing.type,
             description=billing.description,
+            org=billing.org,
             created_by=billing.created_by
         )
         if result:

@@ -11,6 +11,7 @@ class MemberGroupBase(BaseModel):
 
 
 class MemberGroupCreate(MemberGroupBase):
+    org: Optional[str] = None
     created_by: str
 
 
@@ -26,6 +27,7 @@ class MemberGroupResponse(MemberGroupBase):
     id: int
     status: str
     del_mark: str
+    org: str
     created_at: datetime
     created_by: str
     updated_at: Optional[datetime] = None

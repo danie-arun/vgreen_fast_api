@@ -11,9 +11,8 @@ from api.collection_routes import router as collection_router
 from api.billing_routes import router as billing_router
 from api.staff_routes import router as staff_router
 from api.reports_routes import router as reports_router
-import os
 
-#Base.metadata.create_all(bind=engine)
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="VGreen Backend API",
@@ -26,7 +25,7 @@ app.add_middleware(
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"],
+    allow_headers=["*", "Authorization", "X-Api-Key"],
 )
 
 app.include_router(health_router)
@@ -51,5 +50,4 @@ async def root():
 
 if __name__ == "__main__":
     import uvicorn
-    #port = int(os.environ.get("PORT", 8080))
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    uvicorn.run(app, host="0.0.0.0", port=8000)

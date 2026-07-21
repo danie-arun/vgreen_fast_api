@@ -12,6 +12,7 @@ class BillingCreate(BaseModel):
     billing_code: str
     type: str
     description: Optional[str] = None
+    org: Optional[str] = None
     created_by: str = "System"
 
 
@@ -30,6 +31,7 @@ class BillingResponse(BaseModel):
     billing_code: str
     type: str
     description: Optional[str]
+    org: str
     created_at: datetime
     created_by: str
 

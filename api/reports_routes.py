@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from database import get_db
+from dependencies import get_current_user, get_org_id
 from services.reports_service import ReportsService
 from services.export_service import ExportService
 from datetime import date
@@ -13,7 +14,10 @@ router = APIRouter(prefix="/api/reports", tags=["reports"])
 
 
 @router.get("/filter-options")
-def get_filter_options(db: Session = Depends(get_db)):
+def get_filter_options(
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
+):
     """Get all available filter options for reports"""
     return ReportsService.get_filter_options(db)
 
@@ -21,6 +25,9 @@ def get_filter_options(db: Session = Depends(get_db)):
 @router.get("/data")
 def get_reports_data(
     db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+    org: str = Depends(get_org_id),
+    report_type: Optional[str] = Query(None),
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
     emi_days: Optional[List[str]] = Query(None),
@@ -29,9 +36,19 @@ def get_reports_data(
     staff_ids: Optional[List[str]] = Query(None),
     loan_ids: Optional[List[int]] = Query(None),
 ):
-    """Get reports data with filters applied"""
+    """Get reports data with filters applied
+    
+    report_type options:
+    - None: Returns metrics and collections_summary_data only (initial load)
+    - 'user_summary': Returns user_summary_data
+    - 'emi_summary': Returns emi_summary_data
+    - 'financial_summary': Returns summary_data
+    - 'collections_summary': Returns collections_summary_data
+    """
     return ReportsService.get_reports_data(
         db,
+        org=org,
+        report_type=report_type,
         start_date=start_date,
         end_date=end_date,
         emi_days=emi_days,
@@ -45,6 +62,8 @@ def get_reports_data(
 @router.get("/export/financial-summary")
 def export_financial_summary(
     db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+    org: str = Depends(get_org_id),
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
     emi_days: Optional[List[str]] = Query(None),
@@ -84,6 +103,8 @@ def export_financial_summary(
 @router.get("/export/user-summary")
 def export_user_summary(
     db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+    org: str = Depends(get_org_id),
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
     emi_days: Optional[List[str]] = Query(None),
@@ -123,6 +144,8 @@ def export_user_summary(
 @router.get("/export/emi-summary")
 def export_emi_summary(
     db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+    org: str = Depends(get_org_id),
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
     emi_days: Optional[List[str]] = Query(None),
@@ -162,6 +185,8 @@ def export_emi_summary(
 @router.get("/export/collections-summary")
 def export_collections_summary(
     db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+    org: str = Depends(get_org_id),
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
     emi_days: Optional[List[str]] = Query(None),

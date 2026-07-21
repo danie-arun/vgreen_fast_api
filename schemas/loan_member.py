@@ -13,6 +13,7 @@ class LoanMemberBase(BaseModel):
     phone: Optional[str] = None
     amount: Decimal
     advance: Decimal
+    org: str
 
 
 class LoanMemberCreate(LoanMemberBase):

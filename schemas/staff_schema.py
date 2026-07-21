@@ -29,6 +29,7 @@ class StaffCreate(BaseModel):
     disbursement_target: Optional[float] = None
     collection_target: Optional[float] = None
     onboarding_target: Optional[str] = None
+    org: Optional[str] = None
 
 
 class StaffUpdate(BaseModel):
@@ -86,6 +87,7 @@ class StaffResponse(BaseModel):
     disbursement_target: Optional[float]
     collection_target: Optional[float]
     onboarding_target: Optional[str]
+    org: str
     status: str
     del_mark: str
     created_at: Optional[datetime]

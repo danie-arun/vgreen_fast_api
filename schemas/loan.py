@@ -28,6 +28,7 @@ class LoanBase(BaseModel):
     verification_status: Optional[str] = None
     loan_status: Optional[str] = None
     assign_to: Optional[str] = None
+    org: Optional[str] = None
 
     @field_validator('visit_date', mode='before')
     @classmethod
@@ -66,6 +67,7 @@ class LoanUpdate(BaseModel):
     verification_status: Optional[str] = None
     loan_status: Optional[str] = None
     assign_to: Optional[str] = None
+    org: Optional[str] = None
     updated_by: Optional[str] = None
 
     @field_validator('visit_date', mode='before')

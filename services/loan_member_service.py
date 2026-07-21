@@ -19,6 +19,7 @@ class LoanMemberService:
             amount=loan_member.amount,
             collected=0,
             pending=loan_member.amount,
+            org=loan_member.org,
             created_by=loan_member.created_by,
         )
         db.add(db_loan_member)
@@ -27,7 +28,7 @@ class LoanMemberService:
         return db_loan_member
 
     @staticmethod
-    def create_loan_members_for_group(db: Session, loan_id: int, member_group_id: int, amount: float, created_by: str) -> list:
+    def create_loan_members_for_group(db: Session, loan_id: int, member_group_id: int, amount: float, created_by: str, org: str) -> list:
         """Create loan member records for all members in a member group"""
         from models.member_group import MemberGroup
         
@@ -57,6 +58,7 @@ class LoanMemberService:
                         amount=amount,
                         collected=0,
                         pending=amount,
+                        org=org,
                         created_by=created_by,
                     )
                     db.add(db_loan_member)

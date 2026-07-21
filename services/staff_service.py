@@ -36,6 +36,7 @@ class StaffService:
             onboarding_target=staff.onboarding_target,
             status='A',
             del_mark='N',
+            org=staff.org,
             created_at=datetime.now(),
             created_by='Admin',
         )
@@ -50,9 +51,10 @@ class StaffService:
         return db.query(Staff).filter(Staff.id == staff_id, Staff.del_mark == 'N').first()
 
     @staticmethod
-    def get_all_staff(db: Session, skip: int = 0, limit: int = 100) -> list:
-        """Get all active staff members"""
+    def get_all_staff(db: Session, org: str, skip: int = 0, limit: int = 100) -> list:
+        """Get all active staff members for org"""
         return db.query(Staff).filter(
+            Staff.org == org,
             Staff.del_mark == 'N'
         ).order_by(Staff.id.desc()).offset(skip).limit(limit).all()
 
@@ -143,9 +145,10 @@ class StaffService:
         return db_staff
 
     @staticmethod
-    def search_staff(db: Session, query: str, skip: int = 0, limit: int = 100) -> list:
-        """Search staff by name, email, or staff_id"""
+    def search_staff(db: Session, org: str, query: str, skip: int = 0, limit: int = 100) -> list:
+        """Search staff by name, email, or staff_id for org"""
         return db.query(Staff).filter(
+            Staff.org == org,
             Staff.del_mark == 'N',
             (
                 Staff.name.ilike(f'%{query}%') |

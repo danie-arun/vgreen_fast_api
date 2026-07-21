@@ -89,6 +89,8 @@ class ReportsService:
     @staticmethod
     def get_reports_data(
         db: Session,
+        org: str = None,
+        report_type: str = None,
         start_date: date = None,
         end_date: date = None,
         emi_days: list = None,
@@ -97,13 +99,25 @@ class ReportsService:
         staff_ids: list = None,
         loan_ids: list = None,
     ):
-        """Get reports data with filters applied"""
+        """Get reports data with filters applied
+        
+        report_type options:
+        - None: Returns metrics and collections_summary_data only (initial load)
+        - 'user_summary': Returns user_summary_data
+        - 'emi_summary': Returns emi_summary_data
+        - 'financial_summary': Returns summary_data
+        - 'collections_summary': Returns collections_summary_data
+        """
         try:
             # Build base query
             query = db.query(Loan).filter(
                 Loan.del_mark == "N",
                 Loan.loan_status == "Approved",
             )
+            
+            # Apply org filter
+            if org:
+                query = query.filter(Loan.org == org)
 
             # Apply date range filter
             if start_date:
@@ -146,35 +160,39 @@ class ReportsService:
 
                 loans = filtered_loans if filtered_loans else []
 
-            # Calculate metrics
+            # Calculate metrics (always needed)
             metrics = ReportsService._calculate_metrics(db, loans)
 
-            # Get summary data
-            summary_data = ReportsService._get_summary_data(db, loans)
-            
-            # Get user summary data
-            user_summary_data = ReportsService._get_user_summary_data(db, loans)
-            
-            # Get EMI summary data
-            emi_summary_data = ReportsService._get_emi_summary_data(db, loans)
-            
-            # Get collections summary data
-            collections_summary_data = ReportsService._get_collections_summary_data(db, loans)
+            # If no report_type specified, return only metrics and collections_summary_data (initial load)
+            if report_type is None:
+                collections_summary_data = ReportsService._get_collections_summary_data(db, loans)
+                return {
+                    "metrics": metrics,
+                    "collections_summary_data": collections_summary_data,
+                    "loans_count": len(loans),
+                }
 
-            return {
+            # Build response based on report_type
+            response = {
                 "metrics": metrics,
-                "summary_data": summary_data,
-                "user_summary_data": user_summary_data,
-                "emi_summary_data": emi_summary_data,
-                "collections_summary_data": collections_summary_data,
                 "loans_count": len(loans),
             }
+
+            if report_type == "financial_summary":
+                response["summary_data"] = ReportsService._get_summary_data(db, loans)
+            elif report_type == "user_summary":
+                response["user_summary_data"] = ReportsService._get_user_summary_data(db, loans)
+            elif report_type == "emi_summary":
+                response["emi_summary_data"] = ReportsService._get_emi_summary_data(db, loans)
+            elif report_type == "collections_summary":
+                response["collections_summary_data"] = ReportsService._get_collections_summary_data(db, loans)
+
+            return response
 
         except Exception as e:
             logger.exception(f"Error fetching reports data: {str(e)}")
             return {
                 "metrics": {},
-                "summary_data": [],
                 "loans_count": 0,
             }
 

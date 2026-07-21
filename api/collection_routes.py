@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from database import get_db
+from dependencies import get_current_user, get_org_id
 from services.collection_service import CollectionService
 
 router = APIRouter(prefix="/api/collections", tags=["collections"])
@@ -19,14 +20,15 @@ class PaymentRequest(BaseModel):
 def get_collection_list(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    org: str = Depends(get_org_id)
 ):
     """
-    Get collection list with approved loans only.
+    Get collection list with approved loans only for authenticated user's org.
     Combines loans, loan_members, and loan_member_emi data.
     Returns list of collections with all member and EMI details.
     """
-    collections = CollectionService.get_collection_list(db, skip, limit)
+    collections = CollectionService.get_collection_list(db, org=org, skip=skip, limit=limit)
     return {
         "success": True,
         "data": collections,
@@ -37,10 +39,11 @@ def get_collection_list(
 @router.get("/{loan_id}")
 def get_collection_details(
     loan_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    org: str = Depends(get_org_id)
 ):
-    """Get collection details for a specific loan"""
-    collection = CollectionService.get_collection_by_loan_id(db, loan_id)
+    """Get collection details for a specific loan for authenticated user's org"""
+    collection = CollectionService.get_collection_by_loan_id(db, loan_id, org=org)
     if not collection:
         return {
             "success": False,
@@ -56,15 +59,17 @@ def get_collection_details(
 @router.post("/payment/process")
 def process_emi_payment(
     payment: PaymentRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: dict = Depends(get_current_user)
 ):
-    """Process EMI payment and update status"""
+    """Process EMI payment and update status for authenticated user's org"""
     try:
         result = CollectionService.process_emi_payment(
             db,
             payment.emi_id,
             payment.amount,
             payment.paid_by,
+            org=current_user['org'],
             loan_advance=payment.loan_advance,
             credit_officer=payment.credit_officer,
         )

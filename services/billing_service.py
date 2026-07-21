@@ -17,6 +17,7 @@ class BillingService:
         amount: float,
         billing_code: str,
         type: str,
+        org: str,
         description: str = None,
         member_group_id: int = None,
         created_by: str = "System",
@@ -34,6 +35,7 @@ class BillingService:
                 billing_code=billing_code,
                 type=type,
                 description=description,
+                org=org,
                 created_by=created_by,
                 created_at=datetime.utcnow(),
             )
@@ -182,11 +184,12 @@ class BillingService:
         member_id: int,
         member_group_id: int,
         amount: float,
+        org: str = None,
         created_by: str = "System",
         staff_id: str = None,
     ) -> dict:
         """Create billing entry when payment is made"""
-        logger.info(f"Creating payment billing entry for loan_id: {loan_id}, member_id: {member_id}, amount: {amount}")
+        logger.info(f"Creating payment billing entry for loan_id: {loan_id}, member_id: {member_id}, amount: {amount}, org: {org}")
         try:
             # Create CREDIT entry for payment
             payment_entry = BillingService.create_billing_entry(
@@ -199,6 +202,7 @@ class BillingService:
                 billing_code="PAYMENT",
                 type="CREDIT",
                 description=f"Payment received",
+                org=org,
                 created_by=created_by,
             )
             logger.info(f"Successfully created payment billing entry")
@@ -209,11 +213,11 @@ class BillingService:
             return {}
 
     @staticmethod
-    def get_all_billing(db: Session, skip: int = 0, limit: int = 100) -> list:
-        """Get all billing entries"""
-        logger.info(f"Fetching all billing entries skip={skip} limit={limit}")
+    def get_all_billing(db: Session, org: str, skip: int = 0, limit: int = 100) -> list:
+        """Get all billing entries for org"""
+        logger.info(f"Fetching all billing entries for org: {org}, skip={skip} limit={limit}")
         try:
-            billings = db.query(Billing).order_by(Billing.created_at.desc()).offset(skip).limit(limit).all()
+            billings = db.query(Billing).filter(Billing.org == org).order_by(Billing.created_at.desc()).offset(skip).limit(limit).all()
             return [
                 {
                     'id': b.id,
@@ -225,6 +229,7 @@ class BillingService:
                     'billing_code': b.billing_code,
                     'type': b.type,
                     'description': b.description,
+                    'org': b.org,
                     'created_at': b.created_at.isoformat() if b.created_at else None,
                     'created_by': b.created_by,
                 }

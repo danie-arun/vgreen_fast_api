@@ -45,6 +45,7 @@ class Member(Base):
     guarantor_kyc_id = Column(String(50), nullable=True)
     status = Column(String(1), default='A', nullable=False)
     del_mark = Column(String(1), default='N', nullable=False)
+    org = Column(String(255), nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     created_by = Column(String(255), nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
