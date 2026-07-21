@@ -1,16 +1,38 @@
 from fastapi import Depends, HTTPException, status, Header
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import SQLAlchemyError
 from database import SessionLocal
 from services.auth_service import AuthService
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def get_db():
-    """Get database session"""
+    """Get database session with proper error handling"""
     db = SessionLocal()
     try:
         yield db
+    except SQLAlchemyError as e:
+        logger.error(f"Database error: {str(e)}")
+        try:
+            db.rollback()
+        except Exception as rollback_error:
+            logger.error(f"Error during rollback: {str(rollback_error)}")
+        raise
     finally:
-        db.close()
+        try:
+            db.close()
+        except Exception as close_error:
+            logger.error(f"Error closing database session: {str(close_error)}")
+            try:
+                db.rollback()
+            except Exception:
+                pass
+            try:
+                db.expunge_all()
+            except Exception:
+                pass
 
 
 def get_api_key(x_api_key: str = Header(None)) -> str:
