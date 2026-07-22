@@ -141,24 +141,21 @@ class ReportsService:
 
             # Filter by member groups and members (requires joining with LoanMember)
             if group_ids or member_ids:
-                filtered_loans = []
-                for loan in loans:
-                    loan_members = db.query(LoanMember).filter(
-                        LoanMember.loan_id == loan.id
-                    ).all()
-
-                    if group_ids:
-                        loan_members = [
-                            m for m in loan_members if m.member_group_id in group_ids
-                        ]
-
-                    if member_ids:
-                        loan_members = [m for m in loan_members if m.id in member_ids]
-
-                    if loan_members:
-                        filtered_loans.append(loan)
-
-                loans = filtered_loans if filtered_loans else []
+                # Use single query with join instead of N+1 queries
+                loan_ids_list = [loan.id for loan in loans]
+                
+                member_query = db.query(LoanMember.loan_id).distinct().filter(
+                    LoanMember.loan_id.in_(loan_ids_list)
+                )
+                
+                if group_ids:
+                    member_query = member_query.filter(LoanMember.member_group_id.in_(group_ids))
+                
+                if member_ids:
+                    member_query = member_query.filter(LoanMember.id.in_(member_ids))
+                
+                filtered_loan_ids = set([row[0] for row in member_query.all()])
+                loans = [loan for loan in loans if loan.id in filtered_loan_ids]
 
             # Calculate metrics (always needed)
             metrics = ReportsService._calculate_metrics(db, loans)
@@ -240,20 +237,14 @@ class ReportsService:
             # Calculate pending amount
             total_pending = total_loan_amount - total_collected
 
-            # Count total members and unique member groups
-            total_members = 0
-            member_group_ids = set()
-            for loan in loans:
-                loan_members = db.query(LoanMember).filter(
-                    LoanMember.loan_id == loan.id
-                ).all()
-                total_members += len(loan_members)
-                
-                # Collect unique member group IDs
-                for member in loan_members:
-                    if member.member_group_id:
-                        member_group_ids.add(member.member_group_id)
-
+            # Count total members and unique member groups (single query instead of N+1)
+            loan_ids = [loan.id for loan in loans]
+            loan_members_all = db.query(LoanMember).filter(
+                LoanMember.loan_id.in_(loan_ids)
+            ).all()
+            
+            total_members = len(loan_members_all)
+            member_group_ids = set(m.member_group_id for m in loan_members_all if m.member_group_id)
             total_member_groups = len(member_group_ids)
 
             return {
@@ -273,74 +264,89 @@ class ReportsService:
     def _get_summary_data(db: Session, loans: list):
         """Get summary data for table"""
         try:
+            if not loans:
+                return []
+            
+            loan_ids = [loan.id for loan in loans]
+            
+            # Batch fetch all related data
+            loan_members_all = db.query(LoanMember).filter(
+                LoanMember.loan_id.in_(loan_ids)
+            ).all()
+            
+            groups_all = db.query(MemberGroup).filter(
+                MemberGroup.id.in_([l.member_group_id for l in loans if l.member_group_id])
+            ).all()
+            
+            emi_records_all = db.query(LoanMemberEmi).filter(
+                LoanMemberEmi.loan_id.in_(loan_ids)
+            ).all()
+            
+            interest_records_all = db.query(Billing).filter(
+                Billing.loan_id.in_(loan_ids),
+                Billing.billing_code.in_(['INTEREST'])
+            ).all()
+            
+            # Create lookup dictionaries for O(1) access
+            members_by_loan = {}
+            for member in loan_members_all:
+                if member.loan_id not in members_by_loan:
+                    members_by_loan[member.loan_id] = []
+                members_by_loan[member.loan_id].append(member)
+            
+            groups_by_id = {g.id: g for g in groups_all}
+            
+            emi_by_loan = {}
+            for emi in emi_records_all:
+                if emi.loan_id not in emi_by_loan:
+                    emi_by_loan[emi.loan_id] = []
+                emi_by_loan[emi.loan_id].append(emi)
+            
+            interest_by_loan = {}
+            for interest in interest_records_all:
+                if interest.loan_id not in interest_by_loan:
+                    interest_by_loan[interest.loan_id] = 0
+                interest_by_loan[interest.loan_id] += float(interest.amount or 0)
+            
             summary = []
             for idx, loan in enumerate(loans, 1):
-                loan_members = db.query(LoanMember).filter(
-                    LoanMember.loan_id == loan.id
-                ).all()
-
+                loan_members = members_by_loan.get(loan.id, [])
                 member_names = ", ".join([m.name for m in loan_members])
                 member_count = len(loan_members)
                 
-                group = db.query(MemberGroup).filter(
-                    MemberGroup.id == loan.member_group_id
-                ).first()
-
+                group = groups_by_id.get(loan.member_group_id)
+                
                 # Calculate loan totals from EMI records
-                total_collected = 0
-                total_pending = 0
-                total_overdue = 0
-
-                emi_records = db.query(LoanMemberEmi).filter(
-                    LoanMemberEmi.loan_id == loan.id
-                ).all()
-
-                for emi in emi_records:
-                    if emi.emi_status == "PAID":
-                        total_collected += float(emi.emi_amount or 0)
-                    elif emi.emi_status == "OVERDUE":
-                        total_overdue += float(emi.emi_amount or 0)
-                    else:
-                        total_pending += float(emi.emi_amount or 0)
-
-                # Calculate total loan amount as loan_amount × number of members
+                emi_records = emi_by_loan.get(loan.id, [])
+                total_collected = sum(float(e.emi_amount or 0) for e in emi_records if e.emi_status == "PAID")
+                total_pending = sum(float(e.emi_amount or 0) for e in emi_records if e.emi_status not in ["PAID", "OVERDUE"])
+                total_overdue = sum(float(e.emi_amount or 0) for e in emi_records if e.emi_status == "OVERDUE")
+                
+                # Calculate total loan amount
                 base_loan_amount = float(loan.loan_amount or 0)
                 total_loan_amount = base_loan_amount * member_count
-
-                # Calculate total interest from billing table
-                total_interest = 0
-                try:
-                    interest_records = db.query(Billing).filter(
-                        Billing.loan_id == loan.id,
-                        Billing.billing_code.in_(['INTEREST'])
-                    ).all()
-
-                    for record in interest_records:
-                        total_interest += float(record.amount or 0)
-                except Exception as e:
-                    logger.warning(f"Error calculating interest for loan {loan.id}: {str(e)}")
-                    total_interest = 0
-
+                
+                # Get total interest
+                total_interest = interest_by_loan.get(loan.id, 0)
+                
                 # Format loan amount with interest breakdown
                 loan_amount_display = f"{int(total_loan_amount)} + {int(total_interest)}" if total_interest > 0 else str(int(total_loan_amount))
-
-                summary.append(
-                    {
-                        "id": idx,
-                        "loanId": loan.loan_id,
-                        "groupName": group.name if group else "N/A",
-                        "members": member_names,
-                        "loanAmount": loan_amount_display,
-                        "loanAmountValue": total_loan_amount,
-                        "interestAmount": total_interest,
-                        "collectedAmount": total_collected,
-                        "pendingAmount": total_pending,
-                        "overdueAmount": total_overdue,
-                        "emiDay": loan.emi_day or "N/A",
-                        "status": loan.loan_status,
-                    }
-                )
-
+                
+                summary.append({
+                    "id": idx,
+                    "loanId": loan.loan_id,
+                    "groupName": group.name if group else "N/A",
+                    "members": member_names,
+                    "loanAmount": loan_amount_display,
+                    "loanAmountValue": total_loan_amount,
+                    "interestAmount": total_interest,
+                    "collectedAmount": total_collected,
+                    "pendingAmount": total_pending,
+                    "overdueAmount": total_overdue,
+                    "emiDay": loan.emi_day or "N/A",
+                    "status": loan.loan_status,
+                })
+            
             return summary
         except Exception as e:
             logger.exception(f"Error getting summary data: {str(e)}")
@@ -350,24 +356,49 @@ class ReportsService:
     def _get_user_summary_data(db: Session, loans: list):
         """Get user summary data with EMI details"""
         try:
+            if not loans:
+                return []
+            
+            loan_ids = [loan.id for loan in loans]
+            
+            # Batch fetch all related data
+            loan_members_all = db.query(LoanMember).filter(
+                LoanMember.loan_id.in_(loan_ids)
+            ).all()
+            
+            groups_all = db.query(MemberGroup).filter(
+                MemberGroup.id.in_([l.member_group_id for l in loans if l.member_group_id])
+            ).all()
+            
+            emi_records_all = db.query(LoanMemberEmi).filter(
+                LoanMemberEmi.loan_id.in_(loan_ids)
+            ).all()
+            
+            # Create lookup dictionaries
+            members_by_loan = {}
+            for member in loan_members_all:
+                if member.loan_id not in members_by_loan:
+                    members_by_loan[member.loan_id] = []
+                members_by_loan[member.loan_id].append(member)
+            
+            groups_by_id = {g.id: g for g in groups_all}
+            
+            emi_by_member = {}
+            for emi in emi_records_all:
+                key = (emi.loan_id, emi.member_id)
+                if key not in emi_by_member:
+                    emi_by_member[key] = []
+                emi_by_member[key].append(emi)
+            
             user_summary = []
             user_id = 1
             
             for loan in loans:
-                loan_members = db.query(LoanMember).filter(
-                    LoanMember.loan_id == loan.id
-                ).all()
-                
-                group = db.query(MemberGroup).filter(
-                    MemberGroup.id == loan.member_group_id
-                ).first()
+                loan_members = members_by_loan.get(loan.id, [])
+                group = groups_by_id.get(loan.member_group_id)
                 
                 for member in loan_members:
-                    # Get EMI records for this member
-                    emi_records = db.query(LoanMemberEmi).filter(
-                        LoanMemberEmi.loan_id == loan.id,
-                        LoanMemberEmi.member_id == member.member_id,
-                    ).all()
+                    emi_records = emi_by_member.get((loan.id, member.member_id), [])
                     
                     total_emi = sum(float(emi.emi_amount or 0) for emi in emi_records)
                     paid_emi = sum(
@@ -396,33 +427,56 @@ class ReportsService:
     def _get_emi_summary_data(db: Session, loans: list):
         """Get EMI summary data with expandable EMI details"""
         try:
+            if not loans:
+                return []
+            
+            loan_ids = [loan.id for loan in loans]
+            
+            # Batch fetch all related data
+            loan_members_all = db.query(LoanMember).filter(
+                LoanMember.loan_id.in_(loan_ids)
+            ).all()
+            
+            emi_records_all = db.query(LoanMemberEmi).filter(
+                LoanMemberEmi.loan_id.in_(loan_ids)
+            ).all()
+            
+            # Create lookup dictionaries
+            members_by_loan = {}
+            for member in loan_members_all:
+                if member.loan_id not in members_by_loan:
+                    members_by_loan[member.loan_id] = []
+                members_by_loan[member.loan_id].append(member)
+            
+            emi_by_member = {}
+            for emi in emi_records_all:
+                key = (emi.loan_id, emi.member_id)
+                if key not in emi_by_member:
+                    emi_by_member[key] = []
+                emi_by_member[key].append(emi)
+            
             emi_summary = []
             emi_id = 1
             
             for loan in loans:
-                loan_members = db.query(LoanMember).filter(
-                    LoanMember.loan_id == loan.id
-                ).all()
+                loan_members = members_by_loan.get(loan.id, [])
                 
                 for member in loan_members:
-                    # Get EMI records for this loan
-                    emi_records = db.query(LoanMemberEmi).filter(
-                        LoanMemberEmi.loan_id == loan.id,
-                        LoanMemberEmi.member_id == member.member_id,
-                    ).all()
+                    emi_records = emi_by_member.get((loan.id, member.member_id), [])
                     
                     total_emis = len(emi_records)
                     paid_emis = len([e for e in emi_records if (e.emi_status or "").upper() == "PAID"])
                     pending_emis = total_emis - paid_emis
                     
                     # Build EMI details for expansion
-                    emi_details = []
-                    for emi in emi_records:
-                        emi_details.append({
+                    emi_details = [
+                        {
                             "emiDate": emi.emi_date.strftime("%Y-%m-%d") if emi.emi_date else "N/A",
                             "emiAmount": round(float(emi.emi_amount or 0), 2),
                             "emiStatus": emi.emi_status,
-                        })
+                        }
+                        for emi in emi_records
+                    ]
                     
                     emi_summary.append({
                         "id": emi_id,
@@ -444,40 +498,66 @@ class ReportsService:
     def _get_collections_summary_data(db: Session, loans: list):
         """Get collections summary data with per-user breakdown"""
         try:
+            if not loans:
+                return []
+            
+            from datetime import datetime as dt
+            today = dt.now().date()
+            
+            loan_ids = [loan.id for loan in loans]
+            
+            # Batch fetch all related data
+            loan_members_all = db.query(LoanMember).filter(
+                LoanMember.loan_id.in_(loan_ids)
+            ).all()
+            
+            groups_all = db.query(MemberGroup).filter(
+                MemberGroup.id.in_([l.member_group_id for l in loans if l.member_group_id])
+            ).all()
+            
+            emi_records_all = db.query(LoanMemberEmi).filter(
+                LoanMemberEmi.loan_id.in_(loan_ids)
+            ).all()
+            
+            interest_records_all = db.query(Billing).filter(
+                Billing.loan_id.in_(loan_ids),
+                Billing.billing_code.in_(['INTEREST'])
+            ).all()
+            
+            # Create lookup dictionaries
+            members_by_loan = {}
+            for member in loan_members_all:
+                if member.loan_id not in members_by_loan:
+                    members_by_loan[member.loan_id] = []
+                members_by_loan[member.loan_id].append(member)
+            
+            groups_by_id = {g.id: g for g in groups_all}
+            
+            emi_by_loan = {}
+            for emi in emi_records_all:
+                if emi.loan_id not in emi_by_loan:
+                    emi_by_loan[emi.loan_id] = []
+                emi_by_loan[emi.loan_id].append(emi)
+            
+            interest_by_loan = {}
+            for interest in interest_records_all:
+                if interest.loan_id not in interest_by_loan:
+                    interest_by_loan[interest.loan_id] = 0
+                interest_by_loan[interest.loan_id] += float(interest.amount or 0)
+            
             collections_summary = []
             collection_id = 1
             
             for loan in loans:
-                loan_members = db.query(LoanMember).filter(
-                    LoanMember.loan_id == loan.id
-                ).all()
+                loan_members = members_by_loan.get(loan.id, [])
                 member_count = len(loan_members)
-                
-                group = db.query(MemberGroup).filter(
-                    MemberGroup.id == loan.member_group_id
-                ).first()
-                
-                # Get EMI records for this loan
-                emi_records = db.query(LoanMemberEmi).filter(
-                    LoanMemberEmi.loan_id == loan.id
-                ).all()
+                group = groups_by_id.get(loan.member_group_id)
+                emi_records = emi_by_loan.get(loan.id, [])
+                total_interest = interest_by_loan.get(loan.id, 0)
                 
                 # Total principal across all members
                 base_loan_amount = float(loan.loan_amount or 0)
                 total_loan_amount = base_loan_amount * member_count
-
-                # Total interest from billing table (interest only)
-                total_interest = 0
-                try:
-                    interest_records = db.query(Billing).filter(
-                        Billing.loan_id == loan.id,
-                        Billing.billing_code.in_(['INTEREST'])
-                    ).all()
-                    for record in interest_records:
-                        total_interest += float(record.amount or 0)
-                except Exception as e:
-                    logger.warning(f"Error calculating interest for loan {loan.id}: {str(e)}")
-                    total_interest = 0
 
                 loan_amount_display = (
                     f"{int(total_loan_amount)} + {int(total_interest)}"
@@ -496,7 +576,6 @@ class ReportsService:
                 )
                 
                 # Get next EMI details
-                next_emi = None
                 next_emi_date = "N/A"
                 next_emi_amount = 0
                 
@@ -508,15 +587,16 @@ class ReportsService:
                     next_emi_amount = float(next_emi.emi_amount or 0)
                 
                 # Build user details for expansion
-                from datetime import datetime as dt
-                today = dt.now().date()
-                
                 user_details = []
+                emi_by_member = {}
+                for emi in emi_records:
+                    key = emi.member_id
+                    if key not in emi_by_member:
+                        emi_by_member[key] = []
+                    emi_by_member[key].append(emi)
+                
                 for member in loan_members:
-                    member_emi_records = [
-                        emi for emi in emi_records
-                        if emi.member_id == member.member_id
-                    ]
+                    member_emi_records = emi_by_member.get(member.member_id, [])
 
                     member_total_emi = sum(float(emi.emi_amount or 0) for emi in member_emi_records)
                     member_paid_emi = sum(
