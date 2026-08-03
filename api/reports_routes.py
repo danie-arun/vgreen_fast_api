@@ -76,6 +76,7 @@ def export_financial_summary(
     try:
         data = ReportsService.get_reports_data(
             db,
+            org=org,
             start_date=start_date,
             end_date=end_date,
             emi_days=emi_days,
@@ -117,6 +118,7 @@ def export_user_summary(
     try:
         data = ReportsService.get_reports_data(
             db,
+            org=org,
             start_date=start_date,
             end_date=end_date,
             emi_days=emi_days,
@@ -158,6 +160,7 @@ def export_emi_summary(
     try:
         data = ReportsService.get_reports_data(
             db,
+            org=org,
             start_date=start_date,
             end_date=end_date,
             emi_days=emi_days,
@@ -185,7 +188,7 @@ def export_emi_summary(
 @router.get("/export/collections-summary")
 def export_collections_summary(
     db: Session = Depends(get_db),
-    current_user: dict = Depends(get_current_user),
+    main: dict = Depends(get_current_user),
     org: str = Depends(get_org_id),
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
@@ -199,6 +202,7 @@ def export_collections_summary(
     try:
         data = ReportsService.get_reports_data(
             db,
+            org=org,
             start_date=start_date,
             end_date=end_date,
             emi_days=emi_days,

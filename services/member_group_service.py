@@ -1,5 +1,6 @@
 from sqlalchemy.orm import Session
 from models.member_group import MemberGroup
+from models.loan import Loan
 from schemas.member_group import MemberGroupCreate, MemberGroupUpdate
 from datetime import datetime
 
@@ -33,11 +34,26 @@ class MemberGroupService:
 
     @staticmethod
     def get_groups(db: Session, org: str, skip: int = 0, limit: int = 100) -> list:
-        """Get all active groups for org"""
-        return db.query(MemberGroup).filter(
+        """Get all active groups for org with associated loan EMI day"""
+        groups = db.query(MemberGroup).filter(
             MemberGroup.org == org,
             MemberGroup.del_mark == 'N'
         ).order_by(MemberGroup.id.desc()).offset(skip).limit(limit).all()
+        
+        # Fetch EMI day for each group from associated loans
+        for group in groups:
+            loan = db.query(Loan).filter(
+                Loan.member_group_id == group.id,
+                Loan.del_mark == 'N',
+                Loan.loan_status == 'Approved'
+            ).first()
+            
+            if loan:
+                group.emi_day = loan.emi_day
+            else:
+                group.emi_day = None
+        
+        return groups
 
     @staticmethod
     def update_group(db: Session, group_id: int, group_update: MemberGroupUpdate) -> MemberGroup:
@@ -93,10 +109,25 @@ class MemberGroupService:
 
     @staticmethod
     def search_groups(db: Session, org: str, search_query: str, skip: int = 0, limit: int = 100) -> list:
-        """Search groups by name or place for org"""
-        return db.query(MemberGroup).filter(
+        """Search groups by name or place for org with associated loan EMI day"""
+        groups = db.query(MemberGroup).filter(
             MemberGroup.org == org,
             (MemberGroup.name.ilike(f"%{search_query}%") |
              MemberGroup.place.ilike(f"%{search_query}%")),
             MemberGroup.del_mark == 'N'
         ).offset(skip).limit(limit).all()
+        
+        # Fetch EMI day for each group from associated loans
+        for group in groups:
+            loan = db.query(Loan).filter(
+                Loan.member_group_id == group.id,
+                Loan.del_mark == 'N',
+                Loan.loan_status == 'Approved'
+            ).first()
+            
+            if loan:
+                group.emi_day = loan.emi_day
+            else:
+                group.emi_day = None
+        
+        return groups

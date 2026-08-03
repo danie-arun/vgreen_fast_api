@@ -28,6 +28,7 @@ class MemberGroupResponse(MemberGroupBase):
     status: str
     del_mark: str
     org: str
+    emi_day: Optional[str] = None
     created_at: datetime
     created_by: str
     updated_at: Optional[datetime] = None

@@ -30,33 +30,55 @@ class CollectionService:
             
             approved_loans = query.order_by(Loan.id.desc()).offset(skip).limit(limit).all()
 
-            #logger.info(f"Found {len(approved_loans)} approved loans")
+            if not approved_loans:
+                return []
+
+            loan_ids = [loan.id for loan in approved_loans]
+            
+            # Batch fetch all related data
+            loan_members_all = db.query(LoanMember).filter(
+                LoanMember.loan_id.in_(loan_ids)
+            ).all()
+            
+            groups_all = db.query(MemberGroup).filter(
+                MemberGroup.id.in_([l.member_group_id for l in approved_loans if l.member_group_id])
+            ).all()
+            
+            emi_schedule_all = db.query(LoanMemberEmi).filter(
+                LoanMemberEmi.loan_id.in_(loan_ids)
+            ).order_by(LoanMemberEmi.emi_date).all()
+            
+            # Create lookup dictionaries for O(1) access
+            members_by_loan = {}
+            for member in loan_members_all:
+                if member.loan_id not in members_by_loan:
+                    members_by_loan[member.loan_id] = []
+                members_by_loan[member.loan_id].append(member)
+            
+            groups_by_id = {g.id: g for g in groups_all}
+            
+            emi_by_loan = {}
+            for emi in emi_schedule_all:
+                if emi.loan_id not in emi_by_loan:
+                    emi_by_loan[emi.loan_id] = []
+                emi_by_loan[emi.loan_id].append(emi)
+            
+            emi_by_member = {}
+            for emi in emi_schedule_all:
+                key = (emi.loan_id, emi.member_id)
+                if key not in emi_by_member:
+                    emi_by_member[key] = []
+                emi_by_member[key].append(emi)
 
             collection_list = []
 
             for loan in approved_loans:
-                # Get loan members for this loan
-                loan_members = db.query(LoanMember).filter(
-                    LoanMember.loan_id == loan.id
-                ).all()
-
-                #logger.debug(f"Loan {loan.loan_id}: Found {len(loan_members)} members")
-
-                # Get member group name
-                group_name = ''
-                if loan.member_group_id:
-                    member_group = db.query(MemberGroup).filter(
-                        MemberGroup.id == loan.member_group_id
-                    ).first()
-                    if member_group:
-                        group_name = member_group.name
-
-                # Get EMI schedule for this loan
-                emi_schedule = db.query(LoanMemberEmi).filter(
-                    LoanMemberEmi.loan_id == loan.id
-                ).order_by(LoanMemberEmi.emi_date).all()
-
-                #logger.debug(f"Loan {loan.loan_id}: Found {len(emi_schedule)} EMI records")
+                # Get data from lookup dictionaries
+                loan_members = members_by_loan.get(loan.id, [])
+                group = groups_by_id.get(loan.member_group_id)
+                emi_schedule = emi_by_loan.get(loan.id, [])
+                
+                group_name = group.name if group else ''
 
                 # Calculate totals from loan_members table
                 total_collected = sum(float(member.collected or 0) for member in loan_members)
@@ -70,8 +92,8 @@ class CollectionService:
                 # Build members array with EMI data
                 members = []
                 for loan_member in loan_members:
-                    # Get EMI records for this member
-                    member_emis = [emi for emi in emi_schedule if emi.member_id == loan_member.member_id]
+                    # Get EMI records for this member from lookup
+                    member_emis = emi_by_member.get((loan.id, loan_member.member_id), [])
                     
                     # Calculate member totals from loan_members table
                     member_collected = float(loan_member.collected or 0)
@@ -131,7 +153,7 @@ class CollectionService:
 
                 collection_list.append(collection)
 
-            #logger.info(f"Successfully built collection list with {len(collection_list)} items")
+            logger.info(f"Successfully built collection list with {len(collection_list)} items")
             return collection_list
 
         except Exception as e:
@@ -152,7 +174,13 @@ class CollectionService:
                 logger.error(f"Loan not found: {loan_id}")
                 return {}
 
-            # Get member group name
+            # Batch fetch all related data
+            loan_members = db.query(LoanMember).filter(LoanMember.loan_id == loan_id).all()
+            emi_schedule = db.query(LoanMemberEmi).filter(LoanMemberEmi.loan_id == loan_id).order_by(
+                LoanMemberEmi.emi_date
+            ).all()
+            
+            # Get member group name with single query
             group_name = ''
             if loan.member_group_id:
                 member_group = db.query(MemberGroup).filter(
@@ -160,11 +188,14 @@ class CollectionService:
                 ).first()
                 if member_group:
                     group_name = member_group.name
-
-            loan_members = db.query(LoanMember).filter(LoanMember.loan_id == loan_id).all()
-            emi_schedule = db.query(LoanMemberEmi).filter(LoanMemberEmi.loan_id == loan_id).order_by(
-                LoanMemberEmi.emi_date
-            ).all()
+            
+            # Create lookup dictionary for EMI by member
+            emi_by_member = {}
+            for emi in emi_schedule:
+                key = emi.member_id
+                if key not in emi_by_member:
+                    emi_by_member[key] = []
+                emi_by_member[key].append(emi)
 
             # Calculate totals from loan_members table
             total_collected = sum(float(member.collected or 0) for member in loan_members)
@@ -175,7 +206,8 @@ class CollectionService:
 
             members = []
             for loan_member in loan_members:
-                member_emis = [emi for emi in emi_schedule if emi.member_id == loan_member.member_id]
+                # Get EMI records for this member from lookup
+                member_emis = emi_by_member.get(loan_member.member_id, [])
                 
                 # Get member totals from loan_members table
                 member_collected = float(loan_member.collected or 0)
