@@ -19,6 +19,7 @@ class Loan(Base):
     emi_day = Column(String(50), nullable=True)
     loan_start_date = Column(Date, nullable=True)
     repayment_frequency = Column(String(50), nullable=True)
+    saving = Column(Float, default=0.0, nullable=False)
     processing_fees = Column(Float, nullable=True)
     insurance_fees = Column(Float, nullable=True)
     other_fees = Column(Float, nullable=True)
