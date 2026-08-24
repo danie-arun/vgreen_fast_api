@@ -300,6 +300,9 @@ class ExportService:
                     total_loan_adv = 0
                     total_emi_amt = 0
                     
+                    # Get loan saving value from collections_summary_data
+                    loan_saving = item.get('saving', 0)
+                    
                     # Add user rows
                     for user in user_details:
                         row_cells = user_table.add_row().cells
@@ -315,13 +318,13 @@ class ExportService:
                         row_cells[7].text = str(user.get('paidEmis', 0))
                         row_cells[8].text = str(user.get('overdueEmis', 0))  # No OD = count of EMIs with date < today
                         row_cells[9].text = f"{user.get('totalOverdueAmount', 0):,.0f}"  # OD Amt = sum of EMI amounts with date < today
-                        row_cells[10].text = "100"  # Loan Adv = loan member advance
+                        row_cells[10].text = f"{loan_saving:,.0f}"  # Loan Adv = loan saving value from loans table
                         row_cells[11].text = f"{user.get('emiAmount', 0):,.0f}"
                         
                         # Accumulate totals
                         total_no_od += user.get('overdueEmis', 0)
                         total_od_amt += user.get('totalOverdueAmount', 0)
-                        total_loan_adv += 100  # Loan Adv is fixed at 100
+                        total_loan_adv += loan_saving  # Loan Adv = loan saving value
                         total_emi_amt += user.get('emiAmount', 0)
                         
                         # Format all cells with smaller font and proper alignment

@@ -660,6 +660,7 @@ class ReportsService:
                     "pendingAmount": round(total_pending, 2),
                     "nextEmiDate": next_emi_date,
                     "nextEmiAmount": round(next_emi_amount, 2),
+                    "saving": float(loan.saving or 0),
                     "userDetails": user_details,
                 })
                 collection_id += 1
