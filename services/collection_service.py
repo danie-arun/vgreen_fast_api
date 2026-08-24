@@ -149,6 +149,7 @@ class CollectionService:
                     'interestRate': float(loan.interest_rate or 0),
                     'loanTenure': loan.loan_tenure,
                     'monthlyEmi': float(loan.monthly_emi or 0),
+                    'saving': float(loan.saving or 0),
                 }
 
                 collection_list.append(collection)
@@ -261,6 +262,7 @@ class CollectionService:
                 'interestRate': float(loan.interest_rate or 0),
                 'loanTenure': loan.loan_tenure,
                 'monthlyEmi': float(loan.monthly_emi or 0),
+                'saving': float(loan.saving or 0),
             }
 
             logger.info(f"Successfully fetched collection details for loan_id: {loan_id}")

@@ -2,6 +2,7 @@ from sqlalchemy.orm import Session
 from models.billing import Billing
 from models.loan import Loan
 from models.loan_member import LoanMember
+from models.staff import Staff
 from datetime import datetime
 import logging
 
@@ -214,17 +215,26 @@ class BillingService:
 
     @staticmethod
     def get_all_billing(db: Session, org: str, skip: int = 0, limit: int = 100) -> list:
-        """Get all billing entries for org"""
+        """Get all billing entries for org with staff name"""
         logger.info(f"Fetching all billing entries for org: {org}, skip={skip} limit={limit}")
         try:
             billings = db.query(Billing).filter(Billing.org == org).order_by(Billing.created_at.desc()).offset(skip).limit(limit).all()
-            return [
-                {
+            result = []
+            for b in billings:
+                # Fetch staff name if staff_id exists
+                staff_name = None
+                if b.staff_id:
+                    staff = db.query(Staff).filter(Staff.staff_id == b.staff_id).first()
+                    if staff:
+                        staff_name = f"{staff.name} - ({staff.staff_id})"
+                
+                result.append({
                     'id': b.id,
                     'loan_id': b.loan_id,
                     'member_id': b.member_id,
                     'member_group_id': b.member_group_id,
                     'staff_id': getattr(b, 'staff_id', None),
+                    'staff_name': staff_name,
                     'amount': float(b.amount),
                     'billing_code': b.billing_code,
                     'type': b.type,
@@ -232,64 +242,79 @@ class BillingService:
                     'org': b.org,
                     'created_at': b.created_at.isoformat() if b.created_at else None,
                     'created_by': b.created_by,
-                }
-                for b in billings
-            ]
+                })
+            return result
         except Exception as e:
             logger.exception(f"Error fetching all billing entries: {str(e)}")
             return []
 
     @staticmethod
     def get_billing_by_loan(db: Session, loan_id: int) -> list:
-        """Get all billing entries for a loan"""
+        """Get all billing entries for a loan with staff name"""
         logger.info(f"Fetching billing entries for loan_id: {loan_id}")
         try:
             billings = db.query(Billing).filter(Billing.loan_id == loan_id).all()
-            return [
-                {
+            result = []
+            for b in billings:
+                # Fetch staff name if staff_id exists
+                staff_name = None
+                if b.staff_id:
+                    staff = db.query(Staff).filter(Staff.staff_id == b.staff_id).first()
+                    if staff:
+                        staff_name = f"{staff.name} - ({staff.staff_id})"
+                
+                result.append({
                     'id': b.id,
                     'loan_id': b.loan_id,
                     'member_id': b.member_id,
                     'member_group_id': b.member_group_id,
                     'staff_id': getattr(b, 'staff_id', None),
+                    'staff_name': staff_name,
                     'amount': float(b.amount),
                     'billing_code': b.billing_code,
                     'type': b.type,
                     'description': b.description,
                     'created_at': b.created_at.isoformat() if b.created_at else None,
                     'created_by': b.created_by,
-                }
-                for b in billings
-            ]
+                })
+            return result
         except Exception as e:
             logger.exception(f"Error fetching billing entries: {str(e)}")
             return []
 
     @staticmethod
     def get_billing_by_member(db: Session, loan_id: int, member_id: int) -> list:
-        """Get all billing entries for a member in a loan"""
+        """Get all billing entries for a member in a loan with staff name"""
         logger.info(f"Fetching billing entries for loan_id: {loan_id}, member_id: {member_id}")
         try:
             billings = db.query(Billing).filter(
                 Billing.loan_id == loan_id,
                 Billing.member_id == member_id
             ).all()
-            return [
-                {
+            result = []
+            for b in billings:
+                # Fetch staff name if staff_id exists
+                staff_name = None
+                if b.staff_id:
+                    staff = db.query(Staff).filter(Staff.staff_id == b.staff_id).first()
+                    if staff:
+                        staff_name = f"{staff.name} - ({staff.staff_id})"
+                
+                result.append({
                     'id': b.id,
                     'loan_id': b.loan_id,
                     'member_id': b.member_id,
                     'member_group_id': b.member_group_id,
                     'staff_id': getattr(b, 'staff_id', None),
+                    'staff_name': staff_name,
                     'amount': float(b.amount),
                     'billing_code': b.billing_code,
                     'type': b.type,
                     'description': b.description,
                     'created_at': b.created_at.isoformat() if b.created_at else None,
                     'created_by': b.created_by,
-                }
-                for b in billings
-            ]
+                })
+            return result
         except Exception as e:
             logger.exception(f"Error fetching billing entries: {str(e)}")
             return []
