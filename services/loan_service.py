@@ -38,6 +38,7 @@ class LoanService:
             status='A',
             del_mark='N',
             org=loan.org,
+            saving=loan.saving,
             created_by=loan.created_by,
         )
         db.add(db_loan)
@@ -119,6 +120,8 @@ class LoanService:
             db_loan.loan_start_date = loan.loan_start_date
         if loan.repayment_frequency is not None:
             db_loan.repayment_frequency = loan.repayment_frequency
+        if loan.saving is not None:
+            db_loan.saving = loan.saving
         if loan.processing_fees is not None:
             db_loan.processing_fees = loan.processing_fees
         if loan.insurance_fees is not None:
